@@ -21,9 +21,6 @@ on:
 permissions:
   contents: read
 
-env:
-  RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
-
 jobs:
   goruntu:
     runs-on: ubuntu-latest
@@ -39,6 +36,7 @@ jobs:
       - name: Paketi indir ve coz
         env:
           GH_TOKEN: ${{ github.token }}
+          RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
         run: |
           gh release download "${{ inputs.etiket }}" -R "${{ github.repository }}" -p paket.enc
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in paket.enc | tar xz
@@ -54,6 +52,8 @@ jobs:
           --props=plan.json --frames=${{ matrix.p.bas }}-${{ matrix.p.son }}
           --concurrency=2 --gl=swangle --color-space=bt709 --log=error
       - name: Sifrele
+        env:
+          RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
         run: openssl enc -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in parca-${{ matrix.p.n }}.mp4 -out parca-${{ matrix.p.n }}.mp4.enc
       - uses: actions/upload-artifact@v4
         with:
@@ -72,6 +72,7 @@ jobs:
       - name: Paketi indir ve coz
         env:
           GH_TOKEN: ${{ github.token }}
+          RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
         run: |
           gh release download "${{ inputs.etiket }}" -R "${{ github.repository }}" -p paket.enc
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in paket.enc | tar xz
@@ -86,6 +87,8 @@ jobs:
           npx remotion render ${{ inputs.kompozisyon }} ses.wav --codec=wav
           --config=remotion.ses.config.ts --props=plan.json --concurrency=2 --gl=swangle --log=error
       - name: Sifrele
+        env:
+          RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
         run: openssl enc -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in ses.wav -out ses.wav.enc
       - uses: actions/upload-artifact@v4
         with:
