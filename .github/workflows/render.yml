@@ -1,0 +1,94 @@
+# Bulut render (kurgu projesi). Bu repo PUBLIC oldugu icin (Actions ucretsiz) yalniz bu workflow durur;
+# kod, medya ve plan py/bulut.py tarafindan AES-256 ile SIFRELENIP gecici surume (release) yuklenir,
+# parcalar da sifreli artifact olarak doner. Anahtar: RENDER_ANAHTAR (repo secret + yerel .env).
+name: render
+
+on:
+  workflow_dispatch:
+    inputs:
+      etiket:
+        description: "Sifreli paketin yuklendigi gecici surum etiketi"
+        required: true
+      parcalar:
+        description: 'JSON: [{"n":0,"bas":0,"son":449}, ...]'
+        required: true
+      kompozisyon:
+        default: "Kurgu"
+      ses:
+        description: "evet = sesi Remotion ile burada uret (Kurgu disi)."
+        default: "hayir"
+
+permissions:
+  contents: read
+
+env:
+  RENDER_ANAHTAR: ${{ secrets.RENDER_ANAHTAR }}
+
+jobs:
+  goruntu:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: true
+      matrix:
+        p: ${{ fromJSON(inputs.parcalar) }}
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Paketi indir ve coz
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.etiket }}" -R "${{ github.repository }}" -p paket.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in paket.enc | tar xz
+          rm paket.enc
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - name: Render (${{ matrix.p.bas }}-${{ matrix.p.son }})
+        run: >
+          npx remotion render ${{ inputs.kompozisyon }} parca-${{ matrix.p.n }}.mp4
+          --props=plan.json --frames=${{ matrix.p.bas }}-${{ matrix.p.son }}
+          --concurrency=2 --gl=swangle --color-space=bt709 --log=error
+      - name: Sifrele
+        run: openssl enc -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in parca-${{ matrix.p.n }}.mp4 -out parca-${{ matrix.p.n }}.mp4.enc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: parca-${{ matrix.p.n }}
+          path: parca-${{ matrix.p.n }}.mp4.enc
+          retention-days: 1
+
+  ses:
+    if: inputs.ses == 'evet'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Paketi indir ve coz
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release download "${{ inputs.etiket }}" -R "${{ github.repository }}" -p paket.enc
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in paket.enc | tar xz
+          rm paket.enc
+      - uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ hashFiles('package-lock.json') }}
+      - run: npm ci --no-audit --no-fund
+      - name: Ses (tek parca, kayma olmasin)
+        run: >
+          npx remotion render ${{ inputs.kompozisyon }} ses.wav --codec=wav
+          --config=remotion.ses.config.ts --props=plan.json --concurrency=2 --gl=swangle --log=error
+      - name: Sifrele
+        run: openssl enc -aes-256-cbc -pbkdf2 -pass env:RENDER_ANAHTAR -in ses.wav -out ses.wav.enc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ses
+          path: ses.wav.enc
+          retention-days: 1
